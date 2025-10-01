@@ -12,7 +12,7 @@ async fn test_http_download_lifecycle() {
     let manager = Aria2DownloadManager::new(
         "http://localhost:6800/jsonrpc".to_string(),
         None
-    );
+    ).await.expect("Failed to initialize manager");
 
     // Add download
     let task_id = manager.add_download(
@@ -39,7 +39,7 @@ async fn test_pause_resume() {
     let manager = Aria2DownloadManager::new(
         "http://localhost:6800/jsonrpc".to_string(),
         None
-    );
+    ).await.expect("Failed to initialize manager");
 
     let task_id = manager.add_download(
         "https://speed.hetzner.de/10MB.bin".to_string(),
@@ -70,16 +70,15 @@ async fn test_pause_resume() {
 #[tokio::test]
 #[ignore]
 async fn test_daemon_unavailable() {
-    let manager = Aria2DownloadManager::new(
+    // This test now starts its own daemon, so it should succeed
+    // The daemon will try to start on port 9999 which may fail
+    let result = Aria2DownloadManager::new(
         "http://localhost:9999/jsonrpc".to_string(), // Wrong port
         None
-    );
-
-    let result = manager.add_download(
-        "https://example.com/file.bin".to_string(),
-        PathBuf::from("C:\\Users\\huang\\Work\\burncloud\\test_downloads\\test.bin")
     ).await;
 
+    // The daemon will try to start on the default port (6800) but connect to 9999
+    // This should fail during initialization
     assert!(result.is_err());
 }
 
@@ -89,7 +88,7 @@ async fn test_invalid_url() {
     let manager = Aria2DownloadManager::new(
         "http://localhost:6800/jsonrpc".to_string(),
         None
-    );
+    ).await.expect("Failed to initialize manager");
 
     let result = manager.add_download(
         "invalid://url".to_string(),
@@ -105,7 +104,7 @@ async fn test_list_tasks() {
     let manager = Aria2DownloadManager::new(
         "http://localhost:6800/jsonrpc".to_string(),
         None
-    );
+    ).await.expect("Failed to initialize manager");
 
     // Add multiple downloads
     let task_id1 = manager.add_download(

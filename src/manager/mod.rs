@@ -15,22 +15,34 @@ pub struct Aria2DownloadManager {
     client: Arc<Aria2Client>,
     state: Arc<state::StateManager>,
     _poller: Arc<ProgressPoller>,
+    _daemon: Arc<crate::daemon::Aria2Daemon>,
 }
 
 impl Aria2DownloadManager {
-    pub fn new(rpc_url: String, secret: Option<String>) -> Self {
-        let client = Arc::new(Aria2Client::new(rpc_url, secret));
+    pub async fn new(rpc_url: String, secret: Option<String>) -> Result<Self> {
+        // 1. Create client first
+        let client = Arc::new(Aria2Client::new(rpc_url, secret.clone()));
+
+        // 2. Start daemon with client for health checks
+        let daemon_config = crate::daemon::DaemonConfig {
+            rpc_secret: secret.unwrap_or_else(|| "burncloud".to_string()),
+            ..Default::default()
+        };
+        let daemon = Arc::new(crate::daemon::Aria2Daemon::start(daemon_config, client.clone()).await?);
+
+        // 3. Initialize state and poller
         let state = Arc::new(state::StateManager::new());
         let poller = Arc::new(ProgressPoller::new(client.clone(), state.clone()));
 
         // Start progress poller
         poller.start();
 
-        Self {
+        Ok(Self {
             client,
             state,
             _poller: poller,
-        }
+            _daemon: daemon,
+        })
     }
 
     async fn detect_download_type(&self, url: &str) -> Result<DownloadType> {

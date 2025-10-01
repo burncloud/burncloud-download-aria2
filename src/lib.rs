@@ -14,12 +14,14 @@ pub mod client;
 pub mod manager;
 pub mod poller;
 pub mod error;
+pub mod daemon;
 
 pub use manager::Aria2DownloadManager;
 pub use error::Aria2Error;
+pub use daemon::{Aria2Daemon, DaemonConfig};
 
 /// Default aria2 RPC endpoint
 pub const DEFAULT_ARIA2_RPC_URL: &str = "http://localhost:6800/jsonrpc";
 
-/// Default aria2 RPC secret token (empty if not configured)
-pub const DEFAULT_ARIA2_SECRET: &str = "";
+/// Default aria2 RPC secret token
+pub const DEFAULT_ARIA2_SECRET: &str = "burncloud";

@@ -18,7 +18,10 @@ thiserror = "1.0"
 reqwest = { version = "0.12", features = ["json"] }
 base64 = "0.22"
 uuid = { version = "1.0", features = ["v4"] }
+zip = "2.1"
+dirs = "5.0"
 
 [dev-dependencies]
 tokio-test = "0.4"
 mockito = "1.0"
+tempfile = "3.8"
