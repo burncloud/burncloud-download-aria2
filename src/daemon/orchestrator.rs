@@ -61,15 +61,27 @@ impl Aria2Daemon {
         // 6. Wait for RPC to be ready (max 30 seconds)
         let start_time = Instant::now();
         let timeout = Duration::from_secs(30);
+        let mut attempt = 0;
 
         while start_time.elapsed() < timeout {
+            attempt += 1;
+
             if client.get_global_stat().await.is_ok() {
+                // RPC is ready!
                 break;
             }
 
             if start_time.elapsed() >= timeout {
                 return Err(Aria2Error::DaemonUnavailable(
-                    "RPC not ready after 30 seconds".to_string()
+                    format!("RPC not ready after 30 seconds (port {}, {} attempts)",
+                        config.rpc_port, attempt)
+                ));
+            }
+
+            // Check if process is still running
+            if !process.is_running().await {
+                return Err(Aria2Error::ProcessManagementError(
+                    format!("aria2 process exited unexpectedly on port {}", config.rpc_port)
                 ));
             }
 
@@ -112,14 +124,17 @@ impl Drop for Aria2Daemon {
         let process = self.process.clone();
 
         // Attempt to check if we're on a multi-threaded runtime
-        // by trying to get a handle - if this works, we can use block_in_place
+        // by trying to get a handle - if this works, we can use block_on
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
-            // Try spawning a blocking task to stop the process
-            let _ = std::thread::spawn(move || {
+            // Spawn a thread to stop the process and wait for it
+            let join_handle = std::thread::spawn(move || {
                 let _ = handle.block_on(async {
                     let _ = process.stop_process().await;
                 });
             });
+
+            // Give it a brief moment to complete (100ms should be enough)
+            let _ = join_handle.join();
         }
         // If we can't get a runtime handle, the process will be cleaned up by OS
     }

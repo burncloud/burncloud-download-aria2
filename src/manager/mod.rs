@@ -21,16 +21,20 @@ pub struct Aria2DownloadManager {
 impl Aria2DownloadManager {
     pub async fn new(rpc_url: String, secret: Option<String>) -> Result<Self> {
         // 1. Create client first
-        let client = Arc::new(Aria2Client::new(rpc_url, secret.clone()));
+        let client = Arc::new(Aria2Client::new(rpc_url.clone(), secret.clone()));
 
-        // 2. Start daemon with client for health checks
+        // 2. Extract port from RPC URL (default to 6800 if not found)
+        let rpc_port = Self::extract_port_from_url(&rpc_url).unwrap_or(6800);
+
+        // 3. Start daemon with client for health checks
         let daemon_config = crate::daemon::DaemonConfig {
+            rpc_port,
             rpc_secret: secret.unwrap_or_else(|| "burncloud".to_string()),
             ..Default::default()
         };
         let daemon = Arc::new(crate::daemon::Aria2Daemon::start(daemon_config, client.clone()).await?);
 
-        // 3. Initialize state and poller
+        // 4. Initialize state and poller
         let state = Arc::new(state::StateManager::new());
         let poller = Arc::new(ProgressPoller::new(client.clone(), state.clone()));
 
@@ -43,6 +47,17 @@ impl Aria2DownloadManager {
             _poller: poller,
             _daemon: daemon,
         })
+    }
+
+    /// Extract port number from RPC URL
+    /// Examples: "http://localhost:6800/jsonrpc" -> Some(6800)
+    fn extract_port_from_url(url: &str) -> Option<u16> {
+        url.split(':')
+            .nth(2)?
+            .split('/')
+            .next()?
+            .parse()
+            .ok()
     }
 
     async fn detect_download_type(&self, url: &str) -> Result<DownloadType> {
