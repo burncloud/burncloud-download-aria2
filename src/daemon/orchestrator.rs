@@ -107,10 +107,20 @@ impl Drop for Aria2Daemon {
         // Stop monitor
         self.monitor.shutdown();
 
-        // Stop process (using block_in_place for Drop)
+        // Try to stop process - best effort
+        // We can't use async operations in Drop, so we try different approaches
         let process = self.process.clone();
-        let _ = tokio::task::block_in_place(|| {
-            tokio::runtime::Handle::current().block_on(process.stop_process())
-        });
+
+        // Attempt to check if we're on a multi-threaded runtime
+        // by trying to get a handle - if this works, we can use block_in_place
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            // Try spawning a blocking task to stop the process
+            let _ = std::thread::spawn(move || {
+                let _ = handle.block_on(async {
+                    let _ = process.stop_process().await;
+                });
+            });
+        }
+        // If we can't get a runtime handle, the process will be cleaned up by OS
     }
 }

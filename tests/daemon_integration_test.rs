@@ -388,3 +388,146 @@ async fn test_multiple_daemon_instances_different_ports() {
     daemon1.stop().await.ok();
     daemon2.stop().await.ok();
 }
+
+#[tokio::test]
+#[ignore] // Requires network access and aria2 binary
+async fn test_download_baidu_favicon() {
+    // This test validates that the daemon can successfully download a real file
+    // Downloads https://www.baidu.com/favicon.ico
+
+    use burncloud_download_aria2::Aria2DownloadManager;
+    use burncloud_download::DownloadManager;
+    use std::env;
+
+    // Use a persistent directory instead of temp, so file remains after test
+    let download_dir = env::current_dir()
+        .unwrap()
+        .join("test_downloads");
+
+    // Create directory if it doesn't exist
+    tokio::fs::create_dir_all(&download_dir).await.unwrap();
+
+    // Create download manager (this will start the daemon)
+    let manager = Aria2DownloadManager::new(
+        "http://localhost:6800/jsonrpc".to_string(),
+        Some("burncloud".to_string()),
+    )
+    .await
+    .expect("Failed to create download manager");
+
+    // Define download target - use persistent directory
+    let url = "https://www.baidu.com/favicon.ico".to_string();
+    let target_path = download_dir.join("baidu_favicon.ico");
+
+    println!("📥 Starting download: {}", url);
+    println!("📁 Download directory: {:?}", download_dir);
+    println!("💾 Target file: {:?}", target_path);
+
+    // Add download task
+    let task_id = manager
+        .add_download(url.clone(), target_path.clone())
+        .await
+        .expect("Failed to add download task");
+
+    println!("Download task created with ID: {:?}", task_id);
+
+    // Monitor download progress
+    let mut previous_downloaded = 0u64;
+    let timeout = Duration::from_secs(30);
+    let start_time = std::time::Instant::now();
+
+    loop {
+        if start_time.elapsed() > timeout {
+            panic!("Download timeout after 30 seconds");
+        }
+
+        // Get task status
+        let task = manager.get_task(task_id).await.expect("Failed to get task");
+
+        // Get progress
+        let progress = manager.get_progress(task_id).await.expect("Failed to get progress");
+
+        // Print progress if changed
+        if progress.downloaded_bytes != previous_downloaded {
+            println!(
+                "Progress: {} / {} bytes ({:.1}%), Speed: {} bytes/s",
+                progress.downloaded_bytes,
+                progress.total_bytes.unwrap_or(0),
+                if let Some(total) = progress.total_bytes {
+                    (progress.downloaded_bytes as f64 / total as f64) * 100.0
+                } else {
+                    0.0
+                },
+                progress.speed_bps
+            );
+            previous_downloaded = progress.downloaded_bytes;
+        }
+
+        // Check if completed
+        use burncloud_download::DownloadStatus;
+        match task.status {
+            DownloadStatus::Completed => {
+                println!("✅ Download completed successfully!");
+                break;
+            }
+            DownloadStatus::Failed(ref reason) => {
+                panic!("❌ Download failed: {}", reason);
+            }
+            _ => {
+                // Still downloading, wait a bit
+                sleep(Duration::from_millis(500)).await;
+            }
+        }
+    }
+
+    // Verify file exists and has content
+    assert!(target_path.exists(), "Downloaded file should exist");
+
+    let metadata = tokio::fs::metadata(&target_path)
+        .await
+        .expect("Failed to get file metadata");
+
+    assert!(metadata.len() > 0, "Downloaded file should not be empty");
+
+    println!("\n=================================");
+    println!("✅ Download completed successfully!");
+    println!("=================================");
+    println!("📊 File size: {} bytes", metadata.len());
+    println!("📁 File saved to: test_downloads/baidu_favicon.ico");
+    println!("=================================\n");
+
+    // Optional: Read and validate the file
+    let file_content = tokio::fs::read(&target_path)
+        .await
+        .expect("Failed to read downloaded file");
+
+    println!("📋 File info:");
+    println!("   - Size: {} bytes", file_content.len());
+
+    // Check file format (ICO files typically start with 0x00 0x00 0x01 0x00)
+    if file_content.len() >= 4 {
+        println!("   - First 4 bytes: {:02X} {:02X} {:02X} {:02X}",
+            file_content[0], file_content[1], file_content[2], file_content[3]);
+
+        // Note: Baidu's favicon might not be a standard ICO, could be PNG or other format
+        // Just verify we got some data, don't enforce format
+        if &file_content[0..4] == &[0x00, 0x00, 0x01, 0x00] {
+            println!("   - Format: ICO ✅");
+        } else if &file_content[0..4] == &[0x89, 0x50, 0x4E, 0x47] {
+            println!("   - Format: PNG ✅");
+        } else if &file_content[0..2] == &[0xFF, 0xD8] {
+            println!("   - Format: JPEG ✅");
+        } else {
+            println!("   - Format: Unknown (but file downloaded successfully) ✅");
+        }
+    }
+
+    // Give time for cleanup before test ends
+    println!("\n🧹 Cleaning up...");
+    drop(manager);
+
+    // Give more time to allow background tasks and daemon cleanup to finish properly
+    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    println!("✅ Test completed successfully!");
+}
