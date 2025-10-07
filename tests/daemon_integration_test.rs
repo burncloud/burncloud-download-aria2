@@ -391,7 +391,7 @@ async fn test_download_baidu_favicon() {
     // Downloads https://www.baidu.com/favicon.ico
 
     use burncloud_download_aria2::Aria2DownloadManager;
-    use burncloud_download::DownloadManager;
+    use burncloud_download_types::DownloadManager;
     use std::env;
 
     // Use a persistent directory instead of temp, so file remains after test
@@ -460,7 +460,7 @@ async fn test_download_baidu_favicon() {
         }
 
         // Check if completed
-        use burncloud_download::DownloadStatus;
+        use burncloud_download_types::DownloadStatus;
         match task.status {
             DownloadStatus::Completed => {
                 println!("✅ Download completed successfully!");

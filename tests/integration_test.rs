@@ -1,4 +1,4 @@
-use burncloud_download::{DownloadManager, DownloadStatus};
+use burncloud_download_types::{DownloadManager, DownloadStatus};
 use burncloud_download_aria2::Aria2DownloadManager;
 use std::path::PathBuf;
 use tokio::time::{sleep, Duration};

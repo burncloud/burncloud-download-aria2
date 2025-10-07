@@ -8,7 +8,7 @@ repository = "https://github.com/burncloud/burncloud"
 authors = ["burncloud contributors"]
 
 [dependencies]
-burncloud-download = { path = "../burncloud-download" }
+burncloud-download-types = { path = "../burncloud-download-types" }
 tokio = { version = "1.0", features = ["full"] }
 anyhow = "1.0"
 serde = { version = "1.0", features = ["derive"] }

@@ -1,7 +1,7 @@
 use burncloud_download_aria2::client::types::{Aria2Status, Aria2File};
 use burncloud_download_aria2::manager::mapper;
 use burncloud_download_aria2::poller::aggregator::ProgressAggregator;
-use burncloud_download::DownloadStatus;
+use burncloud_download_types::DownloadStatus;
 
 #[test]
 fn test_state_mapping_all_statuses() {

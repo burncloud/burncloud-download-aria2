@@ -4,7 +4,7 @@ pub mod state;
 use crate::client::{Aria2Client, types::Aria2Options};
 use crate::error::Aria2Error;
 use crate::poller::ProgressPoller;
-use burncloud_download::{DownloadManager, TaskId, DownloadTask, DownloadProgress};
+use burncloud_download_types::{TaskId, DownloadTask, DownloadProgress, DownloadManager};
 use async_trait::async_trait;
 use anyhow::Result;
 use std::path::PathBuf;

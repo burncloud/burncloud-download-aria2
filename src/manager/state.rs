@@ -1,4 +1,4 @@
-use burncloud_download::{TaskId, DownloadTask};
+use burncloud_download_types::{TaskId, DownloadTask};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 

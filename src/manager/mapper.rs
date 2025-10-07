@@ -1,4 +1,4 @@
-use burncloud_download::DownloadStatus;
+use burncloud_download_types::DownloadStatus;
 use crate::client::types::Aria2Status;
 
 /// Map aria2 status string to DownloadStatus enum
