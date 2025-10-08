@@ -10,16 +10,19 @@ pub struct DaemonConfig {
     pub rpc_port: u16,
     pub rpc_secret: String,
     pub download_dir: std::path::PathBuf,
+    pub session_file: std::path::PathBuf,
     pub max_restart_attempts: u32,
     pub health_check_interval: Duration,
 }
 
 impl Default for DaemonConfig {
     fn default() -> Self {
+        let base_dir = platform::get_binary_dir();
         Self {
             rpc_port: 6800,
             rpc_secret: "burncloud".to_string(),
-            download_dir: platform::get_binary_dir(),
+            download_dir: base_dir.clone(),
+            session_file: base_dir.join("aria2.session"),
             max_restart_attempts: 10,
             health_check_interval: Duration::from_secs(10),
         }
@@ -51,6 +54,7 @@ impl Aria2Daemon {
             rpc_port: config.rpc_port,
             rpc_secret: config.rpc_secret.clone(),
             download_dir: config.download_dir.clone(),
+            session_file: config.session_file.clone(),
             max_restart_attempts: config.max_restart_attempts,
         };
         let process = Arc::new(process::ProcessHandle::new(binary_path, process_config));
@@ -80,8 +84,18 @@ impl Aria2Daemon {
 
             // Check if process is still running
             if !process.is_running().await {
+                // In debug builds, provide more detailed error information
+                #[cfg(debug_assertions)]
+                {
+                    eprintln!("DEBUG: aria2 process exited during startup on port {}", config.rpc_port);
+                    eprintln!("DEBUG: Binary path: {:?}", platform::get_binary_path());
+                    eprintln!("DEBUG: Download dir: {:?}", config.download_dir);
+                    eprintln!("DEBUG: Session file: {:?}", config.session_file);
+                    eprintln!("DEBUG: Attempt {} of readiness check", attempt);
+                }
+
                 return Err(Aria2Error::ProcessManagementError(
-                    format!("aria2 process exited unexpectedly on port {}", config.rpc_port)
+                    format!("aria2 process exited unexpectedly on port {} (attempt {})", config.rpc_port, attempt)
                 ));
             }
 

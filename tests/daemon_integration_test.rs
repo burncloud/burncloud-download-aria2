@@ -13,12 +13,30 @@ use tempfile::TempDir;
 
 /// Helper function to create a test configuration with custom directories
 fn create_test_config(temp_dir: &TempDir) -> DaemonConfig {
+    create_test_config_with_port(temp_dir, 6801)
+}
+
+/// Helper function to create a test configuration with custom directories and port
+fn create_test_config_with_port(temp_dir: &TempDir, port: u16) -> DaemonConfig {
     DaemonConfig {
-        rpc_port: 6801, // Use different port to avoid conflicts
+        rpc_port: port,
         rpc_secret: "test_secret".to_string(),
         download_dir: temp_dir.path().to_path_buf(),
+        session_file: temp_dir.path().join("aria2.session"),
         max_restart_attempts: 10,
         health_check_interval: Duration::from_secs(5),
+    }
+}
+
+/// Helper to create DaemonConfig with session_file added for backwards compatibility
+fn make_config(rpc_port: u16, rpc_secret: String, download_dir: std::path::PathBuf, max_restart_attempts: u32, health_check_interval: Duration) -> DaemonConfig {
+    DaemonConfig {
+        rpc_port,
+        rpc_secret,
+        download_dir: download_dir.clone(),
+        session_file: download_dir.join("aria2.session"),
+        max_restart_attempts,
+        health_check_interval,
     }
 }
 
@@ -29,7 +47,7 @@ async fn test_daemon_start_with_missing_binary() {
     // Note: This will actually download the binary, so it requires network access
 
     let temp_dir = TempDir::new().unwrap();
-    let config = create_test_config(&temp_dir);
+    let config = create_test_config_with_port(&temp_dir, 6820);
 
     let client = Arc::new(Aria2Client::new(
         format!("http://localhost:{}/jsonrpc", config.rpc_port),
@@ -62,7 +80,7 @@ async fn test_daemon_lifecycle_with_existing_binary() {
     // or has been downloaded by a previous test run
 
     let temp_dir = TempDir::new().unwrap();
-    let config = create_test_config(&temp_dir);
+    let config = create_test_config_with_port(&temp_dir, 6821);
 
     let client = Arc::new(Aria2Client::new(
         format!("http://localhost:{}/jsonrpc", config.rpc_port),
@@ -98,13 +116,13 @@ async fn test_daemon_auto_restart_on_crash() {
     // This test verifies that the daemon automatically restarts aria2 when it crashes
 
     let temp_dir = TempDir::new().unwrap();
-    let config = DaemonConfig {
-        rpc_port: 6802,
-        rpc_secret: "test_restart".to_string(),
-        download_dir: temp_dir.path().to_path_buf(),
-        max_restart_attempts: 5,
-        health_check_interval: Duration::from_secs(3), // Check more frequently
-    };
+    let config = make_config(
+        6802,
+        "test_restart".to_string(),
+        temp_dir.path().to_path_buf(),
+        5,
+        Duration::from_secs(3), // Check more frequently
+    );
 
     let client = Arc::new(Aria2Client::new(
         format!("http://localhost:{}/jsonrpc", config.rpc_port),
@@ -153,13 +171,13 @@ async fn test_daemon_restart_limit_enforcement() {
     // Note: This is difficult to test in practice without mocking
 
     let temp_dir = TempDir::new().unwrap();
-    let config = DaemonConfig {
-        rpc_port: 6803,
-        rpc_secret: "test_limit".to_string(),
-        download_dir: temp_dir.path().to_path_buf(),
-        max_restart_attempts: 2, // Set low for testing
-        health_check_interval: Duration::from_secs(2),
-    };
+    let config = make_config(
+        6803,
+        "test_limit".to_string(),
+        temp_dir.path().to_path_buf(),
+        2, // Set low for testing
+        Duration::from_secs(2),
+    );
 
     let client = Arc::new(Aria2Client::new(
         format!("http://localhost:{}/jsonrpc", config.rpc_port),
@@ -184,7 +202,7 @@ async fn test_daemon_rpc_readiness_wait() {
     // This test verifies that the daemon waits for RPC to be ready
 
     let temp_dir = TempDir::new().unwrap();
-    let config = create_test_config(&temp_dir);
+    let config = create_test_config_with_port(&temp_dir, 6822);
 
     let client = Arc::new(Aria2Client::new(
         format!("http://localhost:{}/jsonrpc", config.rpc_port),
@@ -221,13 +239,13 @@ async fn test_daemon_drop_cleanup() {
     // This test verifies that dropping the daemon stops the process
 
     let temp_dir = TempDir::new().unwrap();
-    let config = DaemonConfig {
-        rpc_port: 6804,
-        rpc_secret: "test_drop".to_string(),
-        download_dir: temp_dir.path().to_path_buf(),
-        max_restart_attempts: 10,
-        health_check_interval: Duration::from_secs(5),
-    };
+    let config = make_config(
+        6804,
+        "test_drop".to_string(),
+        temp_dir.path().to_path_buf(),
+        10,
+        Duration::from_secs(5),
+    );
 
     let client = Arc::new(Aria2Client::new(
         format!("http://localhost:{}/jsonrpc", config.rpc_port),
@@ -261,13 +279,13 @@ async fn test_daemon_custom_configuration() {
     let custom_port = 6805;
     let custom_secret = "my_custom_secret";
 
-    let config = DaemonConfig {
-        rpc_port: custom_port,
-        rpc_secret: custom_secret.to_string(),
-        download_dir: temp_dir.path().to_path_buf(),
-        max_restart_attempts: 15,
-        health_check_interval: Duration::from_secs(8),
-    };
+    let config = make_config(
+        custom_port,
+        custom_secret.to_string(),
+        temp_dir.path().to_path_buf(),
+        15,
+        Duration::from_secs(8),
+    );
 
     let client = Arc::new(Aria2Client::new(
         format!("http://localhost:{}/jsonrpc", custom_port),
@@ -322,7 +340,6 @@ async fn test_daemon_start_timeout_on_rpc_unavailable() {
 }
 
 #[tokio::test]
-#[ignore] // Requires aria2 binary
 async fn test_multiple_daemon_instances_different_ports() {
     // Verify that multiple daemon instances can run on different ports
     // This is important for testing and multi-instance scenarios
@@ -330,21 +347,21 @@ async fn test_multiple_daemon_instances_different_ports() {
     let temp_dir1 = TempDir::new().unwrap();
     let temp_dir2 = TempDir::new().unwrap();
 
-    let config1 = DaemonConfig {
-        rpc_port: 6810,
-        rpc_secret: "daemon1".to_string(),
-        download_dir: temp_dir1.path().to_path_buf(),
-        max_restart_attempts: 10,
-        health_check_interval: Duration::from_secs(5),
-    };
+    let config1 = make_config(
+        6810,
+        "daemon1".to_string(),
+        temp_dir1.path().to_path_buf(),
+        10,
+        Duration::from_secs(5),
+    );
 
-    let config2 = DaemonConfig {
-        rpc_port: 6811,
-        rpc_secret: "daemon2".to_string(),
-        download_dir: temp_dir2.path().to_path_buf(),
-        max_restart_attempts: 10,
-        health_check_interval: Duration::from_secs(5),
-    };
+    let config2 = make_config(
+        6811,
+        "daemon2".to_string(),
+        temp_dir2.path().to_path_buf(),
+        10,
+        Duration::from_secs(5),
+    );
 
     let client1 = Arc::new(Aria2Client::new(
         format!("http://localhost:{}/jsonrpc", config1.rpc_port),
@@ -385,7 +402,6 @@ async fn test_multiple_daemon_instances_different_ports() {
 }
 
 #[tokio::test]
-#[ignore] // Requires network access and aria2 binary
 async fn test_download_baidu_favicon() {
     // This test validates that the daemon can successfully download a real file
     // Downloads https://www.baidu.com/favicon.ico

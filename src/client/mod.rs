@@ -124,4 +124,28 @@ impl Aria2Client {
     pub async fn get_global_stat(&self) -> Result<serde_json::Value, Aria2Error> {
         self.call_rpc("aria2.getGlobalStat".to_string(), vec![]).await
     }
+
+    /// Get active downloads
+    pub async fn tell_active(&self) -> Result<Vec<Aria2Status>, Aria2Error> {
+        let result = self.call_rpc("aria2.tellActive".to_string(), vec![]).await?;
+        serde_json::from_value(result).map_err(|e| Aria2Error::SerializationError(e))
+    }
+
+    /// Get stopped downloads
+    pub async fn tell_stopped(&self, offset: i32, num: i32) -> Result<Vec<Aria2Status>, Aria2Error> {
+        let result = self.call_rpc(
+            "aria2.tellStopped".to_string(),
+            vec![json!(offset), json!(num)]
+        ).await?;
+        serde_json::from_value(result).map_err(|e| Aria2Error::SerializationError(e))
+    }
+
+    /// Get waiting downloads
+    pub async fn tell_waiting(&self, offset: i32, num: i32) -> Result<Vec<Aria2Status>, Aria2Error> {
+        let result = self.call_rpc(
+            "aria2.tellWaiting".to_string(),
+            vec![json!(offset), json!(num)]
+        ).await?;
+        serde_json::from_value(result).map_err(|e| Aria2Error::SerializationError(e))
+    }
 }

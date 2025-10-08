@@ -1,5 +1,5 @@
 pub mod mapper;
-pub mod state;
+// Removed: pub mod state;
 
 use crate::client::{Aria2Client, types::Aria2Options};
 use crate::error::Aria2Error;
@@ -10,12 +10,14 @@ use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs;
+use std::collections::HashMap;
 
 pub struct Aria2DownloadManager {
     client: Arc<Aria2Client>,
-    state: Arc<state::StateManager>,
     _poller: Arc<ProgressPoller>,
     _daemon: Arc<crate::daemon::Aria2Daemon>,
+    // Map TaskId to GID for task identification
+    task_gid_map: Arc<tokio::sync::RwLock<HashMap<TaskId, String>>>,
 }
 
 impl Aria2DownloadManager {
@@ -34,18 +36,17 @@ impl Aria2DownloadManager {
         };
         let daemon = Arc::new(crate::daemon::Aria2Daemon::start(daemon_config, client.clone()).await?);
 
-        // 4. Initialize state and poller
-        let state = Arc::new(state::StateManager::new());
-        let poller = Arc::new(ProgressPoller::new(client.clone(), state.clone()));
+        // 4. Initialize poller without state manager
+        let poller = Arc::new(ProgressPoller::new(client.clone()));
 
         // Start progress poller
         poller.start();
 
         Ok(Self {
             client,
-            state,
             _poller: poller,
             _daemon: daemon,
+            task_gid_map: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         })
     }
 
@@ -72,6 +73,28 @@ impl Aria2DownloadManager {
         } else {
             Err(Aria2Error::InvalidUrl(format!("Unsupported URL scheme: {}", url)).into())
         }
+    }
+
+    /// Get all tasks from aria2 RPC calls
+    async fn get_all_aria2_tasks(&self) -> Result<Vec<crate::client::types::Aria2Status>> {
+        let mut all_tasks = Vec::new();
+
+        // Get active downloads
+        if let Ok(active) = self.client.tell_active().await {
+            all_tasks.extend(active);
+        }
+
+        // Get waiting downloads (limit to 1000)
+        if let Ok(waiting) = self.client.tell_waiting(0, 1000).await {
+            all_tasks.extend(waiting);
+        }
+
+        // Get stopped downloads (limit to 1000)
+        if let Ok(stopped) = self.client.tell_stopped(0, 1000).await {
+            all_tasks.extend(stopped);
+        }
+
+        Ok(all_tasks)
     }
 }
 
@@ -125,40 +148,54 @@ impl DownloadManager for Aria2DownloadManager {
             }
         };
 
-        // Store task state
-        self.state.add_task(task, gid).await;
+        // Store TaskId to GID mapping for later retrieval
+        {
+            let mut map = self.task_gid_map.write().await;
+            map.insert(task_id, gid);
+        }
 
         Ok(task_id)
     }
 
     async fn pause_download(&self, task_id: TaskId) -> Result<()> {
-        let gid = self.state.get_gid(task_id).await
-            .ok_or_else(|| anyhow::anyhow!("Task not found"))?;
+        let gid = {
+            let map = self.task_gid_map.read().await;
+            map.get(&task_id).cloned()
+                .ok_or_else(|| anyhow::anyhow!("Task not found"))?
+        };
 
         self.client.pause(&gid).await?;
         Ok(())
     }
 
     async fn resume_download(&self, task_id: TaskId) -> Result<()> {
-        let gid = self.state.get_gid(task_id).await
-            .ok_or_else(|| anyhow::anyhow!("Task not found"))?;
+        let gid = {
+            let map = self.task_gid_map.read().await;
+            map.get(&task_id).cloned()
+                .ok_or_else(|| anyhow::anyhow!("Task not found"))?
+        };
 
         self.client.unpause(&gid).await?;
         Ok(())
     }
 
     async fn cancel_download(&self, task_id: TaskId) -> Result<()> {
-        let gid = self.state.get_gid(task_id).await
-            .ok_or_else(|| anyhow::anyhow!("Task not found"))?;
+        let gid = {
+            let mut map = self.task_gid_map.write().await;
+            map.remove(&task_id)
+                .ok_or_else(|| anyhow::anyhow!("Task not found"))?
+        };
 
         self.client.remove(&gid).await?;
-        self.state.remove_task(task_id).await;
         Ok(())
     }
 
     async fn get_progress(&self, task_id: TaskId) -> Result<DownloadProgress> {
-        let gid = self.state.get_gid(task_id).await
-            .ok_or_else(|| anyhow::anyhow!("Task not found"))?;
+        let gid = {
+            let map = self.task_gid_map.read().await;
+            map.get(&task_id).cloned()
+                .ok_or_else(|| anyhow::anyhow!("Task not found"))?
+        };
 
         let status = self.client.tell_status(&gid).await?;
 
@@ -181,37 +218,57 @@ impl DownloadManager for Aria2DownloadManager {
     }
 
     async fn get_task(&self, task_id: TaskId) -> Result<DownloadTask> {
-        let gid = self.state.get_gid(task_id).await
-            .ok_or_else(|| anyhow::anyhow!("Task not found"))?;
+        let gid = {
+            let map = self.task_gid_map.read().await;
+            map.get(&task_id).cloned()
+                .ok_or_else(|| anyhow::anyhow!("Task not found"))?
+        };
 
-        let state = self.state.get_state(&gid).await
-            .ok_or_else(|| anyhow::anyhow!("Task state not found"))?;
-
-        // Fetch latest status from aria2
+        // Fetch latest status from aria2 RPC
         let aria2_status = self.client.tell_status(&gid).await?;
-        let mut task = state.task.clone();
+
+        // Reconstruct basic task info from aria2 status
+        // Note: We lose original URL and target_path, but we have aria2's files info
+        let target_path = if let Some(file) = aria2_status.files.first() {
+            PathBuf::from(&file.path)
+        } else {
+            PathBuf::from("unknown")
+        };
+
+        let mut task = DownloadTask::new("".to_string(), target_path);
+        task.id = task_id;
         task.status = mapper::map_aria2_status(&aria2_status);
         task.updated_at = std::time::SystemTime::now();
-
-        // Update cached state
-        self.state.update_task(&gid, task.clone()).await;
 
         Ok(task)
     }
 
     async fn list_tasks(&self) -> Result<Vec<DownloadTask>> {
-        let states = self.state.list_all_states().await;
+        // Get all aria2 tasks directly from RPC
+        let aria2_tasks = self.get_all_aria2_tasks().await?;
         let mut tasks = Vec::new();
 
-        for state in states {
-            // Fetch latest status for each task
-            if let Ok(aria2_status) = self.client.tell_status(&state.aria2_gid).await {
-                let mut task = state.task.clone();
+        let task_map = self.task_gid_map.read().await;
+
+        for aria2_status in aria2_tasks {
+            // Try to find the TaskId for this GID
+            if let Some(&task_id) = task_map.iter()
+                .find(|(_, gid)| *gid == &aria2_status.gid)
+                .map(|(task_id, _)| task_id) {
+
+                // Reconstruct task info
+                let target_path = if let Some(file) = aria2_status.files.first() {
+                    PathBuf::from(&file.path)
+                } else {
+                    PathBuf::from("unknown")
+                };
+
+                let mut task = DownloadTask::new("".to_string(), target_path);
+                task.id = task_id;
                 task.status = mapper::map_aria2_status(&aria2_status);
                 task.updated_at = std::time::SystemTime::now();
+
                 tasks.push(task);
-            } else {
-                tasks.push(state.task);
             }
         }
 
@@ -219,7 +276,8 @@ impl DownloadManager for Aria2DownloadManager {
     }
 
     async fn active_download_count(&self) -> Result<usize> {
-        let tasks = self.list_tasks().await?;
-        Ok(tasks.iter().filter(|t| t.status.is_active()).count())
+        // Get active downloads directly from aria2
+        let active = self.client.tell_active().await?;
+        Ok(active.len())
     }
 }

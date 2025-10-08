@@ -93,6 +93,7 @@ mod process_tests {
             rpc_port: 6800,
             rpc_secret: "test_secret".to_string(),
             download_dir: PathBuf::from("/tmp"),
+            session_file: PathBuf::from("/tmp/aria2.session"),
             max_restart_attempts: 5,
         };
 
@@ -107,6 +108,7 @@ mod process_tests {
             rpc_port: 6800,
             rpc_secret: "test".to_string(),
             download_dir: PathBuf::from("/tmp"),
+            session_file: PathBuf::from("/tmp/aria2.session"),
             max_restart_attempts: 10,
         };
 
@@ -131,6 +133,7 @@ mod process_tests {
             rpc_port: 6800,
             rpc_secret: "test".to_string(),
             download_dir: PathBuf::from("/tmp"),
+            session_file: PathBuf::from("/tmp/aria2.session"),
             max_restart_attempts: 5,
         };
 
@@ -148,6 +151,7 @@ mod process_tests {
             rpc_port: 6800,
             rpc_secret: "test".to_string(),
             download_dir: PathBuf::from("/tmp"),
+            session_file: PathBuf::from("/tmp/aria2.session"),
             max_restart_attempts: 10,
         };
 
@@ -180,6 +184,7 @@ mod daemon_config_tests {
             rpc_port: 7800,
             rpc_secret: "custom_secret".to_string(),
             download_dir: PathBuf::from("/custom/path"),
+            session_file: PathBuf::from("/custom/path/aria2.session"),
             max_restart_attempts: 3,
             health_check_interval: std::time::Duration::from_secs(5),
         };

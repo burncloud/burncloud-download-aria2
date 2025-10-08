@@ -11,6 +11,7 @@ pub struct ProcessConfig {
     pub rpc_port: u16,
     pub rpc_secret: String,
     pub download_dir: PathBuf,
+    pub session_file: PathBuf,
     pub max_restart_attempts: u32,
 }
 
@@ -37,6 +38,20 @@ impl ProcessHandle {
         // Stop existing process if running
         self.stop_process().await?;
 
+        // Ensure download directory exists and is accessible
+        tokio::fs::create_dir_all(&self.config.download_dir).await
+            .map_err(|e| Aria2Error::ProcessStartFailed(
+                format!("Failed to create download directory {:?}: {}", self.config.download_dir, e)
+            ))?;
+
+        // Ensure session file parent directory exists
+        if let Some(parent) = self.config.session_file.parent() {
+            tokio::fs::create_dir_all(parent).await
+                .map_err(|e| Aria2Error::ProcessStartFailed(
+                    format!("Failed to create session directory {:?}: {}", parent, e)
+                ))?;
+        }
+
         // Build command
         let mut cmd = Command::new(&self.binary_path);
         cmd.arg("--enable-rpc")
@@ -47,14 +62,59 @@ impl ProcessHandle {
             .arg("--dir")
             .arg(self.config.download_dir.to_string_lossy().as_ref())
             .arg("--continue")
-            .arg("--quiet")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .kill_on_drop(true);
+            .arg("--save-session")
+            .arg(self.config.session_file.to_string_lossy().as_ref())
+            .arg("--save-session-interval")
+            .arg("60");
+
+        // Only add --input-file if session file exists
+        if self.config.session_file.exists() {
+            cmd.arg("--input-file")
+                .arg(self.config.session_file.to_string_lossy().as_ref());
+        }
+
+        // Don't suppress output in debug builds to help with troubleshooting
+        #[cfg(debug_assertions)]
+        {
+            cmd.stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+        }
+
+        #[cfg(not(debug_assertions))]
+        {
+            cmd.arg("--quiet")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+        }
+
+        cmd.kill_on_drop(true);
+
+        // In debug builds, log the command that will be executed
+        #[cfg(debug_assertions)]
+        {
+            eprintln!("DEBUG: Starting aria2c with command:");
+            eprintln!("  Binary: {:?}", self.binary_path);
+            eprintln!("  Args: {:?}", cmd);
+        }
 
         // Spawn process
-        let child = cmd.spawn()
+        let mut child = cmd.spawn()
             .map_err(|e| Aria2Error::ProcessStartFailed(format!("Failed to spawn aria2: {}", e)))?;
+
+        // In debug builds, capture stderr for diagnostics
+        #[cfg(debug_assertions)]
+        {
+            if let Some(stderr) = child.stderr.take() {
+                use tokio::io::{AsyncBufReadExt, BufReader};
+                let stderr_reader = BufReader::new(stderr);
+                tokio::spawn(async move {
+                    let mut lines = stderr_reader.lines();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        eprintln!("aria2 stderr: {}", line);
+                    }
+                });
+            }
+        }
 
         // Store child process
         *self.child.lock().await = Some(child);
