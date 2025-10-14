@@ -114,7 +114,40 @@ enum DownloadType {
 #[async_trait]
 impl DownloadManager for Aria2DownloadManager {
     async fn add_download(&self, url: String, target_path: PathBuf) -> Result<TaskId> {
-        // Create task
+        // Check for duplicate URL first
+        let existing_tasks = self.get_all_aria2_tasks().await?;
+        let task_map = self.task_gid_map.read().await;
+
+        for aria2_task in &existing_tasks {
+            // Extract GID from the task
+            let gid = aria2_task
+                .get("gid")
+                .and_then(|g| g.as_str())
+                .unwrap_or("");
+
+            // Extract URLs from files[].uris[]
+            if let Some(files) = aria2_task.get("files").and_then(|f| f.as_array()) {
+                for file in files {
+                    if let Some(uris) = file.get("uris").and_then(|u| u.as_array()) {
+                        for uri_obj in uris {
+                            if let Some(existing_url) = uri_obj.get("uri").and_then(|u| u.as_str()) {
+                                if existing_url == url {
+                                    // Found duplicate URL, return existing TaskId if we have it
+                                    if let Some(&existing_task_id) = task_map.iter()
+                                        .find(|(_, task_gid)| task_gid.as_str() == gid)
+                                        .map(|(task_id, _)| task_id) {
+                                        return Ok(existing_task_id);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        drop(task_map); // Release the read lock
+
+        // No duplicate found, create new task
         let task = DownloadTask::new(url.clone(), target_path.clone());
         let task_id = task.id;
 

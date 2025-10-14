@@ -133,3 +133,43 @@ async fn test_list_tasks() {
     manager.cancel_download(task_id1).await.ok();
     manager.cancel_download(task_id2).await.ok();
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_url_deduplication() {
+    let manager = Aria2DownloadManager::new(
+        "http://localhost:6800/jsonrpc".to_string(),
+        None
+    ).await.expect("Failed to initialize manager");
+
+    // Add first download
+    let task_id1 = manager.add_download(
+        "https://speed.hetzner.de/1MB.bin".to_string(),
+        PathBuf::from("C:\\Users\\huang\\Work\\burncloud\\test_downloads\\dedup_test1.bin")
+    ).await.expect("Failed to add first download");
+
+    // Wait for task to be registered
+    sleep(Duration::from_secs(1)).await;
+
+    // Add same URL again - should return the same TaskId due to deduplication
+    let task_id2 = manager.add_download(
+        "https://speed.hetzner.de/1MB.bin".to_string(),
+        PathBuf::from("C:\\Users\\huang\\Work\\burncloud\\test_downloads\\dedup_test2.bin")
+    ).await.expect("Failed to add duplicate download");
+
+    // Both task IDs should be the same
+    assert_eq!(task_id1, task_id2, "Duplicate URL should return the same TaskId");
+
+    // Add different URL - should create new task
+    let task_id3 = manager.add_download(
+        "https://speed.hetzner.de/5MB.bin".to_string(),
+        PathBuf::from("C:\\Users\\huang\\Work\\burncloud\\test_downloads\\dedup_test3.bin")
+    ).await.expect("Failed to add different download");
+
+    // Third task ID should be different
+    assert_ne!(task_id1, task_id3, "Different URL should create new TaskId");
+
+    // Cleanup
+    manager.cancel_download(task_id1).await.ok(); // This will cancel both task_id1 and task_id2 since they're the same
+    manager.cancel_download(task_id3).await.ok();
+}
