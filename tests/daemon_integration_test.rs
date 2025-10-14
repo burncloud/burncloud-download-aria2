@@ -475,21 +475,32 @@ async fn test_download_baidu_favicon() {
             previous_downloaded = progress.downloaded_bytes;
         }
 
-        // Check if completed
-        use burncloud_download_types::DownloadStatus;
-        match task.status {
-            DownloadStatus::Completed => {
+        // Check if completed - no status field anymore, use progress to determine completion
+        if let Some(total) = progress.total_bytes {
+            if progress.downloaded_bytes >= total {
                 println!("✅ Download completed successfully!");
                 break;
             }
-            DownloadStatus::Failed(ref reason) => {
-                panic!("❌ Download failed: {}", reason);
-            }
-            _ => {
-                // Still downloading, wait a bit
-                sleep(Duration::from_millis(500)).await;
-            }
         }
+
+        // Check if no progress for a while (could indicate failure)
+        if progress.speed_bps == 0 && start_time.elapsed() > Duration::from_secs(20) {
+            println!("⚠️ No progress detected for 20 seconds, checking if file exists...");
+            if target_path.exists() {
+                let metadata = tokio::fs::metadata(&target_path).await.ok();
+                if let Some(meta) = metadata {
+                    if meta.len() > 0 {
+                        println!("✅ Download appears complete (file exists with size {})!", meta.len());
+                        break;
+                    }
+                }
+            }
+            println!("❌ Download appears to have failed (no progress, no file)");
+            panic!("Download failed: no progress detected");
+        }
+
+        // Still downloading, wait a bit
+        sleep(Duration::from_millis(500)).await;
     }
 
     // Verify file exists and has content

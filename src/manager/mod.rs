@@ -1,4 +1,4 @@
-pub mod mapper;
+// Removed: pub mod mapper;
 // Removed: pub mod state;
 
 use crate::client::{Aria2Client, types::Aria2Options};
@@ -75,23 +75,29 @@ impl Aria2DownloadManager {
         }
     }
 
-    /// Get all tasks from aria2 RPC calls
-    async fn get_all_aria2_tasks(&self) -> Result<Vec<crate::client::types::Aria2Status>> {
+    /// Get all tasks from aria2 RPC calls - returns raw JSON for real-time data
+    async fn get_all_aria2_tasks(&self) -> Result<Vec<serde_json::Value>> {
         let mut all_tasks = Vec::new();
 
         // Get active downloads
         if let Ok(active) = self.client.tell_active().await {
-            all_tasks.extend(active);
+            if let Some(active_array) = active.as_array() {
+                all_tasks.extend(active_array.clone());
+            }
         }
 
         // Get waiting downloads (limit to 1000)
         if let Ok(waiting) = self.client.tell_waiting(0, 1000).await {
-            all_tasks.extend(waiting);
+            if let Some(waiting_array) = waiting.as_array() {
+                all_tasks.extend(waiting_array.clone());
+            }
         }
 
         // Get stopped downloads (limit to 1000)
         if let Ok(stopped) = self.client.tell_stopped(0, 1000).await {
-            all_tasks.extend(stopped);
+            if let Some(stopped_array) = stopped.as_array() {
+                all_tasks.extend(stopped_array.clone());
+            }
         }
 
         Ok(all_tasks)
@@ -197,11 +203,27 @@ impl DownloadManager for Aria2DownloadManager {
                 .ok_or_else(|| anyhow::anyhow!("Task not found"))?
         };
 
+        // Get real-time status from aria2
         let status = self.client.tell_status(&gid).await?;
 
-        let total_bytes = status.total_length.parse::<u64>().unwrap_or(0);
-        let downloaded_bytes = status.completed_length.parse::<u64>().unwrap_or(0);
-        let speed_bps = status.download_speed.parse::<u64>().unwrap_or(0);
+        // Extract values directly from JSON for real-time data
+        let total_bytes = status
+            .get("totalLength")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+
+        let downloaded_bytes = status
+            .get("completedLength")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
+
+        let speed_bps = status
+            .get("downloadSpeed")
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0);
 
         let eta_seconds = if speed_bps > 0 && total_bytes > downloaded_bytes {
             Some((total_bytes - downloaded_bytes) / speed_bps)
@@ -224,48 +246,60 @@ impl DownloadManager for Aria2DownloadManager {
                 .ok_or_else(|| anyhow::anyhow!("Task not found"))?
         };
 
-        // Fetch latest status from aria2 RPC
+        // Fetch latest status from aria2 RPC for real-time data
         let aria2_status = self.client.tell_status(&gid).await?;
 
-        // Reconstruct basic task info from aria2 status
-        // Note: We lose original URL and target_path, but we have aria2's files info
-        let target_path = if let Some(file) = aria2_status.files.first() {
-            PathBuf::from(&file.path)
-        } else {
-            PathBuf::from("unknown")
-        };
+        // Reconstruct basic task info from aria2 status JSON
+        // Extract target path from files array
+        let target_path = aria2_status
+            .get("files")
+            .and_then(|f| f.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|file| file.get("path"))
+            .and_then(|path| path.as_str())
+            .map(|path| PathBuf::from(path))
+            .unwrap_or_else(|| PathBuf::from("unknown"));
 
         let mut task = DownloadTask::new("".to_string(), target_path);
         task.id = task_id;
-        task.status = mapper::map_aria2_status(&aria2_status);
+        // Removed: task.status = ... - no status mapping, use real-time aria2 data
         task.updated_at = std::time::SystemTime::now();
 
         Ok(task)
     }
 
     async fn list_tasks(&self) -> Result<Vec<DownloadTask>> {
-        // Get all aria2 tasks directly from RPC
+        // Get all aria2 tasks directly from RPC for real-time data
         let aria2_tasks = self.get_all_aria2_tasks().await?;
         let mut tasks = Vec::new();
 
         let task_map = self.task_gid_map.read().await;
 
         for aria2_status in aria2_tasks {
+            // Extract GID from JSON
+            let gid = aria2_status
+                .get("gid")
+                .and_then(|g| g.as_str())
+                .unwrap_or("");
+
             // Try to find the TaskId for this GID
             if let Some(&task_id) = task_map.iter()
-                .find(|(_, gid)| *gid == &aria2_status.gid)
+                .find(|(_, task_gid)| task_gid.as_str() == gid)
                 .map(|(task_id, _)| task_id) {
 
-                // Reconstruct task info
-                let target_path = if let Some(file) = aria2_status.files.first() {
-                    PathBuf::from(&file.path)
-                } else {
-                    PathBuf::from("unknown")
-                };
+                // Reconstruct task info from JSON
+                let target_path = aria2_status
+                    .get("files")
+                    .and_then(|f| f.as_array())
+                    .and_then(|arr| arr.first())
+                    .and_then(|file| file.get("path"))
+                    .and_then(|path| path.as_str())
+                    .map(|path| PathBuf::from(path))
+                    .unwrap_or_else(|| PathBuf::from("unknown"));
 
                 let mut task = DownloadTask::new("".to_string(), target_path);
                 task.id = task_id;
-                task.status = mapper::map_aria2_status(&aria2_status);
+                // Removed: task.status = ... - no status mapping, use real-time aria2 data
                 task.updated_at = std::time::SystemTime::now();
 
                 tasks.push(task);
@@ -276,8 +310,15 @@ impl DownloadManager for Aria2DownloadManager {
     }
 
     async fn active_download_count(&self) -> Result<usize> {
-        // Get active downloads directly from aria2
+        // Get active downloads directly from aria2 for real-time count
         let active = self.client.tell_active().await?;
-        Ok(active.len())
+
+        // Count items in the JSON array
+        let count = active
+            .as_array()
+            .map(|arr| arr.len())
+            .unwrap_or(0);
+
+        Ok(count)
     }
 }

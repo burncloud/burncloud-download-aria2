@@ -1,16 +1,32 @@
-use crate::client::types::Aria2Status;
+use serde_json::Value;
 
 /// Aggregate progress for multi-file downloads
+/// Works directly with JSON values for real-time data access
 pub struct ProgressAggregator;
 
 impl ProgressAggregator {
-    pub fn aggregate(status: &Aria2Status) -> AggregatedProgress {
-        let total_bytes: u64 = status.files.iter()
-            .filter_map(|f| f.length.parse::<u64>().ok())
+    pub fn aggregate(status: &Value) -> AggregatedProgress {
+        // Extract files array from JSON
+        let empty_files = Vec::new();
+        let files = status
+            .get("files")
+            .and_then(|f| f.as_array())
+            .unwrap_or(&empty_files);
+
+        let total_bytes: u64 = files.iter()
+            .filter_map(|f| {
+                f.get("length")
+                    .and_then(|l| l.as_str())
+                    .and_then(|s| s.parse::<u64>().ok())
+            })
             .sum();
 
-        let downloaded_bytes: u64 = status.files.iter()
-            .filter_map(|f| f.completed_length.parse::<u64>().ok())
+        let downloaded_bytes: u64 = files.iter()
+            .filter_map(|f| {
+                f.get("completedLength")
+                    .and_then(|l| l.as_str())
+                    .and_then(|s| s.parse::<u64>().ok())
+            })
             .sum();
 
         AggregatedProgress {
@@ -29,39 +45,62 @@ pub struct AggregatedProgress {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::types::{Aria2Status, Aria2File};
+    use serde_json::json;
 
     #[test]
     fn test_aggregate_multi_file() {
-        let status = Aria2Status {
-            gid: "test".to_string(),
-            status: "active".to_string(),
-            total_length: "3000".to_string(),
-            completed_length: "1500".to_string(),
-            download_speed: "100".to_string(),
-            upload_speed: "0".to_string(),
-            files: vec![
-                Aria2File {
-                    index: "1".to_string(),
-                    path: "/file1".to_string(),
-                    length: "1000".to_string(),
-                    completed_length: "500".to_string(),
-                    selected: "true".to_string(),
+        let status = json!({
+            "gid": "test",
+            "status": "active",
+            "totalLength": "3000",
+            "completedLength": "1500",
+            "downloadSpeed": "100",
+            "uploadSpeed": "0",
+            "files": [
+                {
+                    "index": "1",
+                    "path": "/file1",
+                    "length": "1000",
+                    "completedLength": "500",
+                    "selected": "true"
                 },
-                Aria2File {
-                    index: "2".to_string(),
-                    path: "/file2".to_string(),
-                    length: "2000".to_string(),
-                    completed_length: "1000".to_string(),
-                    selected: "true".to_string(),
-                },
-            ],
-            error_code: None,
-            error_message: None,
-        };
+                {
+                    "index": "2",
+                    "path": "/file2",
+                    "length": "2000",
+                    "completedLength": "1000",
+                    "selected": "true"
+                }
+            ]
+        });
 
         let progress = ProgressAggregator::aggregate(&status);
         assert_eq!(progress.total_bytes, 3000);
         assert_eq!(progress.downloaded_bytes, 1500);
+    }
+
+    #[test]
+    fn test_aggregate_empty_files() {
+        let status = json!({
+            "gid": "test",
+            "status": "waiting",
+            "files": []
+        });
+
+        let progress = ProgressAggregator::aggregate(&status);
+        assert_eq!(progress.total_bytes, 0);
+        assert_eq!(progress.downloaded_bytes, 0);
+    }
+
+    #[test]
+    fn test_aggregate_no_files_field() {
+        let status = json!({
+            "gid": "test",
+            "status": "waiting"
+        });
+
+        let progress = ProgressAggregator::aggregate(&status);
+        assert_eq!(progress.total_bytes, 0);
+        assert_eq!(progress.downloaded_bytes, 0);
     }
 }

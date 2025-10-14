@@ -83,14 +83,12 @@ impl Aria2Client {
             .map(|s| s.to_string())
     }
 
-    /// Get download status
-    pub async fn tell_status(&self, gid: &str) -> Result<Aria2Status, Aria2Error> {
-        let result = self.call_rpc(
+    /// Get download status - returns raw JSON for real-time data access
+    pub async fn tell_status(&self, gid: &str) -> Result<serde_json::Value, Aria2Error> {
+        self.call_rpc(
             "aria2.tellStatus".to_string(),
             vec![json!(gid)]
-        ).await?;
-
-        serde_json::from_value(result).map_err(|e| Aria2Error::SerializationError(e))
+        ).await
     }
 
     /// Pause download
@@ -125,27 +123,24 @@ impl Aria2Client {
         self.call_rpc("aria2.getGlobalStat".to_string(), vec![]).await
     }
 
-    /// Get active downloads
-    pub async fn tell_active(&self) -> Result<Vec<Aria2Status>, Aria2Error> {
-        let result = self.call_rpc("aria2.tellActive".to_string(), vec![]).await?;
-        serde_json::from_value(result).map_err(|e| Aria2Error::SerializationError(e))
+    /// Get active downloads - returns raw JSON for real-time data access
+    pub async fn tell_active(&self) -> Result<serde_json::Value, Aria2Error> {
+        self.call_rpc("aria2.tellActive".to_string(), vec![]).await
     }
 
-    /// Get stopped downloads
-    pub async fn tell_stopped(&self, offset: i32, num: i32) -> Result<Vec<Aria2Status>, Aria2Error> {
-        let result = self.call_rpc(
+    /// Get stopped downloads - returns raw JSON for real-time data access
+    pub async fn tell_stopped(&self, offset: i32, num: i32) -> Result<serde_json::Value, Aria2Error> {
+        self.call_rpc(
             "aria2.tellStopped".to_string(),
             vec![json!(offset), json!(num)]
-        ).await?;
-        serde_json::from_value(result).map_err(|e| Aria2Error::SerializationError(e))
+        ).await
     }
 
-    /// Get waiting downloads
-    pub async fn tell_waiting(&self, offset: i32, num: i32) -> Result<Vec<Aria2Status>, Aria2Error> {
-        let result = self.call_rpc(
+    /// Get waiting downloads - returns raw JSON for real-time data access
+    pub async fn tell_waiting(&self, offset: i32, num: i32) -> Result<serde_json::Value, Aria2Error> {
+        self.call_rpc(
             "aria2.tellWaiting".to_string(),
             vec![json!(offset), json!(num)]
-        ).await?;
-        serde_json::from_value(result).map_err(|e| Aria2Error::SerializationError(e))
+        ).await
     }
 }
