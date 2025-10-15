@@ -1,128 +1,181 @@
-# error.rs - 错误处理模块文档
+# 错误处理 (error.rs)
 
 ## 概述
 
-`error.rs` 模块定义了 BurnCloud Aria2 Download Manager 中使用的所有错误类型。使用 `thiserror` crate 提供了结构化的错误处理。
+`error.rs` 模块定义了 BurnCloud Aria2 Download Manager 中所有可能出现的错误类型，使用 `thiserror` crate 提供统一的错误处理。
 
 ## 错误类型
 
-### Aria2Error
+### 通信错误
 
-主要的错误枚举类型，包含了所有可能在aria2下载管理过程中出现的错误情况。
-
-#### 错误变体
-
-##### 1. RpcError(i32, String)
-- **作用**: JSON-RPC通信错误
+#### `RpcError(i32, String)`
+- **描述**: JSON-RPC 协议错误
 - **参数**:
   - `i32`: 错误代码
   - `String`: 错误消息
-- **使用场景**: 与aria2 RPC服务通信时出现的错误
+- **触发场景**:
+  - Aria2 RPC服务返回错误响应
+  - RPC协议层面的问题
 
-##### 2. TransportError(reqwest::Error)
-- **作用**: HTTP传输错误
-- **自动转换**: 使用 `#[from]` 属性从 `reqwest::Error` 自动转换
-- **使用场景**: 网络请求失败、连接超时等HTTP相关错误
+#### `TransportError(reqwest::Error)`
+- **描述**: HTTP传输层错误
+- **来源**: `reqwest::Error`
+- **触发场景**:
+  - 网络连接问题
+  - HTTP请求失败
+  - 超时等传输层问题
 
-##### 3. SerializationError(serde_json::Error)
-- **作用**: JSON序列化/反序列化错误
-- **自动转换**: 使用 `#[from]` 属性从 `serde_json::Error` 自动转换
-- **使用场景**: JSON数据解析失败、序列化失败等
+#### `SerializationError(serde_json::Error)`
+- **描述**: JSON序列化/反序列化错误
+- **来源**: `serde_json::Error`
+- **触发场景**:
+  - JSON格式错误
+  - 数据结构不匹配
 
-##### 4. DaemonUnavailable(String)
-- **作用**: Aria2守护进程不可用
-- **参数**: `String` - 详细错误信息
-- **使用场景**: aria2守护进程未运行或无法连接时
+### 守护进程相关错误
 
-##### 5. BinaryDownloadFailed(String)
-- **作用**: 二进制文件下载失败
-- **参数**: `String` - 失败原因
-- **使用场景**: 下载aria2二进制文件失败时
+#### `DaemonUnavailable(String)`
+- **描述**: Aria2 守护进程不可用
+- **触发场景**:
+  - 守护进程未启动
+  - 连接失败
+  - RPC服务不响应
 
-##### 6. BinaryExtractionFailed(String)
-- **作用**: 二进制文件解压失败
-- **参数**: `String` - 失败原因
-- **使用场景**: 解压下载的aria2压缩包失败时
+#### `BinaryDownloadFailed(String)`
+- **描述**: 二进制文件下载失败
+- **触发场景**:
+  - Aria2二进制文件下载失败
+  - 网络问题导致下载中断
 
-##### 7. ProcessStartFailed(String)
-- **作用**: 进程启动失败
-- **参数**: `String` - 失败原因
-- **使用场景**: 启动aria2进程失败时
+#### `BinaryExtractionFailed(String)`
+- **描述**: 二进制文件解压失败
+- **触发场景**:
+  - 压缩包损坏
+  - 解压过程中的IO错误
+  - 权限问题
 
-##### 8. ProcessManagementError(String)
-- **作用**: 进程管理错误
-- **参数**: `String` - 错误详情
-- **使用场景**: 进程监控、重启等管理操作失败时
+### 进程管理错误
 
-##### 9. RestartLimitExceeded
-- **作用**: 超过最大重启尝试次数
-- **使用场景**: aria2进程重启次数超过预设限制时
+#### `ProcessStartFailed(String)`
+- **描述**: 进程启动失败
+- **触发场景**:
+  - 二进制文件不存在或损坏
+  - 权限不足
+  - 系统资源不足
 
-##### 10. IoError(std::io::Error)
-- **作用**: 输入/输出错误
-- **自动转换**: 使用 `#[from]` 属性从 `std::io::Error` 自动转换
-- **使用场景**: 文件操作、网络IO等系统级错误
+#### `ProcessManagementError(String)`
+- **描述**: 进程管理错误
+- **触发场景**:
+  - 进程监控失败
+  - 进程状态查询错误
+  - 进程停止失败
 
-##### 11. TaskNotFound(String)
-- **作用**: 在aria2中找不到指定任务
-- **参数**: `String` - 任务ID或相关信息
-- **使用场景**: 查询、操作不存在的下载任务时
+#### `RestartLimitExceeded`
+- **描述**: 超过最大重启次数限制
+- **触发场景**:
+  - 守护进程反复崩溃
+  - 达到配置的最大重启次数
 
-##### 12. InvalidUrl(String)
-- **作用**: 无效的URL格式
-- **参数**: `String` - 无效的URL
-- **使用场景**: URL格式验证失败时
+### 任务相关错误
 
-##### 13. InvalidPath(String)
-- **作用**: 无效的文件路径
-- **参数**: `String` - 无效的路径
-- **使用场景**: 文件路径验证失败时
+#### `TaskNotFound(String)`
+- **描述**: 任务未找到
+- **触发场景**:
+  - TaskId无效
+  - 任务已被删除
+  - GID映射丢失
 
-##### 14. UnsupportedType(String)
-- **作用**: 不支持的下载类型
-- **参数**: `String` - 不支持的类型描述
-- **使用场景**: 尝试下载不支持的文件类型时
+#### `InvalidUrl(String)`
+- **描述**: 无效的URL格式
+- **触发场景**:
+  - URL格式错误
+  - 不支持的协议
 
-##### 15. StateMappingError(String)
-- **作用**: 状态映射错误
-- **参数**: `String` - 映射错误详情
-- **使用场景**: aria2状态与内部状态转换失败时
+#### `InvalidPath(String)`
+- **描述**: 无效的文件路径
+- **触发场景**:
+  - 路径格式错误
+  - 路径不存在或无权限访问
 
-##### 16. General(String)
-- **作用**: 通用错误
-- **参数**: `String` - 错误描述
-- **使用场景**: 其他未分类的错误情况
+#### `UnsupportedType(String)`
+- **描述**: 不支持的下载类型
+- **触发场景**:
+  - 未知的文件类型
+  - 不支持的协议
 
-## 错误处理特性
+### 状态管理错误
 
-1. **自动转换**: 通过 `#[from]` 属性实现从标准库错误类型的自动转换
-2. **格式化输出**: 每个错误变体都有自定义的错误消息格式
-3. **调试支持**: 实现了 `Debug` trait，便于调试
-4. **thiserror集成**: 使用 `thiserror` crate 简化错误定义
+#### `StateMappingError(String)`
+- **描述**: 状态映射错误
+- **触发场景**:
+  - Aria2状态与内部状态映射失败
+  - 状态转换错误
+
+### 系统级错误
+
+#### `IoError(std::io::Error)`
+- **描述**: IO操作错误
+- **来源**: `std::io::Error`
+- **触发场景**:
+  - 文件读写错误
+  - 目录创建失败
+  - 权限问题
+
+#### `General(String)`
+- **描述**: 通用错误
+- **触发场景**:
+  - 其他未分类的错误情况
+  - 内部逻辑错误
+
+## 错误处理策略
+
+### 自动重试机制
+- `ProcessStartFailed`: 自动重启进程（有重试次数限制）
+- `DaemonUnavailable`: 健康检查器会尝试重新连接
+
+### 优雅降级
+- `BinaryDownloadFailed`: 提示用户手动下载二进制文件
+- `TransportError`: 重试网络请求
+
+### 用户反馈
+- 所有错误都提供详细的错误消息
+- Debug模式下提供更多调试信息
 
 ## 使用示例
 
 ```rust
 use crate::error::Aria2Error;
 
-// 手动创建RPC错误
-let rpc_error = Aria2Error::RpcError(1, "Method not found".to_string());
-
-// 自动转换IO错误
-let io_result: Result<(), std::io::Error> = Err(std::io::Error::new(
-    std::io::ErrorKind::NotFound,
-    "File not found"
-));
-let aria2_result: Result<(), Aria2Error> = io_result.map_err(Into::into);
-
-// 模式匹配处理错误
-match some_result {
+// 处理RPC错误
+match client.tell_status("gid").await {
+    Ok(status) => { /* 处理状态 */ },
+    Err(Aria2Error::RpcError(code, msg)) => {
+        eprintln!("RPC错误 {}: {}", code, msg);
+    },
     Err(Aria2Error::DaemonUnavailable(msg)) => {
-        println!("Daemon error: {}", msg);
+        eprintln!("守护进程不可用: {}", msg);
+        // 尝试重启守护进程
+    },
+    Err(e) => {
+        eprintln!("其他错误: {}", e);
     }
-    Err(Aria2Error::TaskNotFound(task_id)) => {
-        println!("Task {} not found", task_id);
-    }
-    _ => {}
+}
+```
+
+## 错误传播
+
+项目中错误传播使用以下模式：
+
+1. **内部错误**: 使用 `?` 操作符自动转换
+2. **跨层错误**: 通过 `From` trait 实现自动转换
+3. **用户接口**: 返回 `anyhow::Result` 为用户提供灵活的错误处理
+
+```rust
+// 自动错误转换示例
+pub async fn download_binary() -> Result<(), Aria2Error> {
+    let response = reqwest::get("https://example.com/aria2c").await?; // TransportError
+    let bytes = response.bytes().await?; // TransportError
+    std::fs::write("/path/to/aria2c", bytes)?; // IoError
+    Ok(())
 }
 ```

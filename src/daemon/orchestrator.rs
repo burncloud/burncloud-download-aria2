@@ -1,6 +1,6 @@
 use crate::error::Aria2Error;
 use crate::client::Aria2Client;
-use super::{platform, binary, process, monitor};
+use super::{platform, binary, process, monitor, port_utils};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -13,6 +13,28 @@ pub struct DaemonConfig {
     pub session_file: std::path::PathBuf,
     pub max_restart_attempts: u32,
     pub health_check_interval: Duration,
+}
+
+impl DaemonConfig {
+    /// Ensure the RPC port is available, finding the next available port if necessary
+    pub async fn ensure_available_port(mut self) -> Result<Self, Aria2Error> {
+        // Check if the current port is available
+        if port_utils::is_port_available(self.rpc_port) {
+            return Ok(self);
+        }
+
+        // Find the next available port starting from the current port + 1
+        match port_utils::find_available_port_async(self.rpc_port + 1).await {
+            Some(available_port) => {
+                println!("Port {} is occupied. Using port {} instead.", self.rpc_port, available_port);
+                self.rpc_port = available_port;
+                Ok(self)
+            }
+            None => Err(Aria2Error::ProcessManagementError(
+                format!("No available ports found starting from {}", self.rpc_port)
+            ))
+        }
+    }
 }
 
 impl Default for DaemonConfig {
@@ -38,6 +60,9 @@ pub struct Aria2Daemon {
 impl Aria2Daemon {
     /// Start the aria2 daemon
     pub async fn start(config: DaemonConfig, client: Arc<Aria2Client>) -> Result<Self, Aria2Error> {
+        // 0. Ensure we have an available port
+        let config = config.ensure_available_port().await?;
+
         // 1. Get binary path
         let binary_path = platform::get_binary_path();
 

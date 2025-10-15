@@ -62,9 +62,7 @@ impl ProcessHandle {
             .arg("--dir")
             .arg(self.config.download_dir.to_string_lossy().as_ref())
             .arg("--continue")
-            // .arg("--save-session")
-            .arg(self.config.session_file.to_string_lossy().as_ref())
-            // .arg("--save-session-interval")
+            .arg("--auto-file-renaming=false")
             .arg("60");
 
         // Only add --input-file if session file exists

@@ -29,21 +29,34 @@ impl Aria2DownloadManager {
         let rpc_port = Self::extract_port_from_url(&rpc_url).unwrap_or(6800);
 
         // 3. Start daemon with client for health checks
-        let daemon_config = crate::daemon::DaemonConfig {
+        let mut daemon_config = crate::daemon::DaemonConfig {
             rpc_port,
             rpc_secret: secret.unwrap_or_else(|| "burncloud".to_string()),
             ..Default::default()
         };
-        let daemon = Arc::new(crate::daemon::Aria2Daemon::start(daemon_config, client.clone()).await?);
 
-        // 4. Initialize poller without state manager
-        let poller = Arc::new(ProgressPoller::new(client.clone()));
+        // 4. Ensure we have an available port (may update daemon_config.rpc_port)
+        daemon_config = daemon_config.ensure_available_port().await?;
+
+        // 5. If the port changed, we need to update the client URL
+        let final_client = if daemon_config.rpc_port != rpc_port {
+            let new_url = Self::update_url_port(&rpc_url, daemon_config.rpc_port);
+            println!("Updated RPC URL to: {}", new_url);
+            Arc::new(Aria2Client::new(new_url, daemon_config.rpc_secret.clone().into()))
+        } else {
+            client
+        };
+
+        let daemon = Arc::new(crate::daemon::Aria2Daemon::start(daemon_config, final_client.clone()).await?);
+
+        // 6. Initialize poller without state manager
+        let poller = Arc::new(ProgressPoller::new(final_client.clone()));
 
         // Start progress poller
         poller.start();
 
         Ok(Self {
-            client,
+            client: final_client,
             _poller: poller,
             _daemon: daemon,
             task_gid_map: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
@@ -59,6 +72,21 @@ impl Aria2DownloadManager {
             .next()?
             .parse()
             .ok()
+    }
+
+    /// Update the port in an RPC URL
+    /// Examples: "http://localhost:6800/jsonrpc" with port 6801 -> "http://localhost:6801/jsonrpc"
+    fn update_url_port(url: &str, new_port: u16) -> String {
+        // Simple replacement - find the port number after the second colon and replace it
+        if let Some(colon_pos) = url.rfind(':') {
+            if let Some(slash_pos) = url[colon_pos..].find('/') {
+                let prefix = &url[..colon_pos + 1];
+                let suffix = &url[colon_pos + slash_pos..];
+                return format!("{}{}{}", prefix, new_port, suffix);
+            }
+        }
+        // Fallback: couldn't parse, return a new URL
+        format!("http://localhost:{}/jsonrpc", new_port)
     }
 
     async fn detect_download_type(&self, url: &str) -> Result<DownloadType> {
@@ -353,5 +381,35 @@ impl DownloadManager for Aria2DownloadManager {
             .unwrap_or(0);
 
         Ok(count)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_port_from_url() {
+        assert_eq!(Aria2DownloadManager::extract_port_from_url("http://localhost:6800/jsonrpc"), Some(6800));
+        assert_eq!(Aria2DownloadManager::extract_port_from_url("http://localhost:9999/jsonrpc"), Some(9999));
+        assert_eq!(Aria2DownloadManager::extract_port_from_url("http://localhost/jsonrpc"), None);
+        assert_eq!(Aria2DownloadManager::extract_port_from_url("invalid_url"), None);
+    }
+
+    #[test]
+    fn test_update_url_port() {
+        assert_eq!(
+            Aria2DownloadManager::update_url_port("http://localhost:6800/jsonrpc", 6801),
+            "http://localhost:6801/jsonrpc"
+        );
+        assert_eq!(
+            Aria2DownloadManager::update_url_port("http://localhost:9999/jsonrpc", 7000),
+            "http://localhost:7000/jsonrpc"
+        );
+        // Test fallback case
+        assert_eq!(
+            Aria2DownloadManager::update_url_port("invalid_url", 8080),
+            "http://localhost:8080/jsonrpc"
+        );
     }
 }
