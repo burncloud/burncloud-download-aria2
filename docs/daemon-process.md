@@ -357,7 +357,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut daemon = Aria2Daemon::new(config);
 
     // 启动守护进程
-    daemon.start(Path::new("./aria2/aria2c.exe")).await?;
+    daemon.start(Path::new(r"C:\Users\username\AppData\Local\BurnCloud\aria2c.exe")).await?;
 
     println!("守护进程已启动，按 Ctrl+C 退出");
 

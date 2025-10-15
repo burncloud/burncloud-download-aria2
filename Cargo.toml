@@ -1,0 +1,19 @@
+[package]
+name = "burncloud-download-aria2"
+version = "0.1.0"
+edition = "2021"
+authors = ["BurnCloud"]
+description = "A simple Rust library for downloading, configuring and managing aria2 downloader"
+license = "MIT"
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }
+reqwest = { version = "0.11", features = ["json", "stream"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+zip = "0.6"
+base64 = "0.21"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.0"
