@@ -19,6 +19,13 @@ const MAX_PORT_RANGE: u16 = 100;
 const ARIA2_MAIN_URL: &str = "https://github.com/aria2/aria2/releases/download/release-1.37.0/aria2-1.37.0-win-64bit-build1.zip";
 const ARIA2_BACKUP_URL: &str = "https://gitee.com/burncloud/aria2/raw/master/aria2-1.37.0-win-64bit-build1.zip";
 
+/// 获取 BurnCloud 目录路径
+fn get_burncloud_dir() -> PathBuf {
+    std::env::var("USERPROFILE")
+        .map(|profile| PathBuf::from(profile).join("AppData").join("Local").join("BurnCloud"))
+        .unwrap_or_else(|_| PathBuf::from(r"C:\Users\Default\AppData\Local\BurnCloud"))
+}
+
 // ============================================================================
 // 错误类型定义
 // ============================================================================
@@ -72,7 +79,7 @@ impl Default for Aria2Config {
             download_dir: std::env::current_dir().unwrap_or_default().join("downloads"),
             max_connections: 16,
             split_size: "1M".to_string(),
-            aria2_path: PathBuf::from(r"C:\Users\username\AppData\Local\BurnCloud\aria2c.exe"),
+            aria2_path: get_burncloud_dir().join("aria2c.exe"),
         }
     }
 }
@@ -147,7 +154,7 @@ pub async fn download_aria2() -> Aria2Result<PathBuf> {
         .build()
         .map_err(|e| Aria2Error::DownloadError(e.to_string()))?;
 
-    let target_dir = PathBuf::from(r"C:\Users\username\AppData\Local\BurnCloud");
+    let target_dir = get_burncloud_dir();
     std::fs::create_dir_all(&target_dir)
         .map_err(|e| Aria2Error::DownloadError(format!("创建目录失败: {}", e)))?;
 
