@@ -2,26 +2,48 @@
 name = "burncloud-download-aria2"
 version = "0.1.0"
 edition = "2021"
-description = "Aria2 backend implementation for BurnCloud download manager"
+authors = ["BurnCloud Team"]
+description = "一个简单的 Rust 库，用于下载、配置和管理 aria2 下载器"
 license = "MIT"
-repository = "https://github.com/burncloud/burncloud"
-authors = ["burncloud contributors"]
+homepage = "https://github.com/burncloud/burncloud-download-aria2"
+repository = "https://github.com/burncloud/burncloud-download-aria2"
+keywords = ["aria2", "download", "rpc", "manager"]
+categories = ["network-programming", "api-bindings"]
 
 [dependencies]
-burncloud-download-types = { path = "../burncloud-download-types" }
-tokio = { version = "1.0", features = ["full"] }
-anyhow = "1.0"
+# HTTP 客户端，用于下载 aria2 和 RPC 通信
+reqwest = { version = "0.11", features = ["json"] }
+
+# 序列化和反序列化
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-async-trait = "0.1"
-thiserror = "1.0"
-reqwest = { version = "0.12", features = ["json"] }
-base64 = "0.22"
-uuid = { version = "1.0", features = ["v4"] }
-zip = "2.1"
-dirs = "5.0"
+
+# ZIP 文件解压
+zip = "0.6"
+
+# 异步运行时
+tokio = { version = "1.0", features = ["full"] }
 
 [dev-dependencies]
+# 测试框架
 tokio-test = "0.4"
-mockito = "1.0"
-tempfile = "3.8"
+
+[lib]
+name = "burncloud_download_aria2"
+path = "src/lib.rs"
+
+[[bin]]
+name = "aria2-test"
+path = "src/main.rs"
+
+[profile.release]
+# 优化设置
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+# 开发时的优化设置
+opt-level = 0
+debug = true
