@@ -368,7 +368,10 @@ impl Aria2RpcClient {
         let param_value = serde_json::to_value(&params)
             .map_err(|e| Aria2Error::RpcError(e.to_string()))?;
 
-        if !param_value.is_null() {
+        // 如果参数是数组，则展开每个元素作为单独的参数
+        if let Value::Array(array) = param_value {
+            rpc_params.extend(array);
+        } else if !param_value.is_null() {
             rpc_params.push(param_value);
         }
 
@@ -407,7 +410,7 @@ impl Aria2RpcClient {
         }
 
         if let Some(opts) = options {
-            self.call_method("aria2.addUri", (uris,serde_json::json!({}), opts)).await
+            self.call_method("aria2.addUri", (uris, opts)).await
         } else {
             self.call_method("aria2.addUri", uris).await
         }
