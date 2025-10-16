@@ -52,16 +52,9 @@ async fn test_download(client: &Aria2RpcClient) -> Aria2Result<()> {
     println!("📥 测试下载功能...");
 
     // 添加一个小文件下载测试
-    let test_url = "https://httpbin.org/robots.txt";
-    let options = DownloadOptions {
-        dir: None,
-        out: Some("test_robots.txt".to_string()),
-        split: Some(1),
-        max_connection_per_server: Some(1),
-        continue_download: Some(true),
-    };
+    let test_url = "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-releases/20.04.6/ubuntu-20.04.6-live-server-amd64.iso";
 
-    match client.add_uri(vec![test_url.to_string()], Some(options)).await {
+    match client.add_uri(vec![test_url.to_string()], None).await {
         Ok(gid) => {
             println!("  - 添加下载任务成功，GID: {}", gid);
 
