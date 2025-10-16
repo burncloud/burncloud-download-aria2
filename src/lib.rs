@@ -218,7 +218,7 @@ fn extract_aria2(zip_path: &Path, target_dir: &Path) -> Aria2Result<()> {
         let mut file = archive.by_index(i)
             .map_err(|e| Aria2Error::DownloadError(e.to_string()))?;
 
-        if file.name() == "aria2c.exe" {
+        if file.name().ends_with("aria2c.exe") {
             let mut out_file = std::fs::File::create(target_dir.join("aria2c.exe"))
                 .map_err(|e| Aria2Error::DownloadError(e.to_string()))?;
             std::io::copy(&mut file, &mut out_file)
@@ -391,13 +391,13 @@ impl Aria2RpcClient {
         if let Some(opts) = options {
             self.call_method("aria2.addUri", (uris, serde_json::json!({}), opts)).await
         } else {
-            self.call_method("aria2.addUri", vec![uris]).await
+            self.call_method("aria2.addUri", uris).await
         }
     }
 
     /// 获取下载状态
     pub async fn tell_status(&self, gid: &str) -> Aria2Result<DownloadStatus> {
-        self.call_method("aria2.tellStatus", vec![gid]).await
+        self.call_method("aria2.tellStatus", gid).await
     }
 
     /// 获取活跃下载列表
@@ -412,17 +412,17 @@ impl Aria2RpcClient {
 
     /// 暂停下载
     pub async fn pause(&self, gid: &str) -> Aria2Result<String> {
-        self.call_method("aria2.pause", vec![gid]).await
+        self.call_method("aria2.pause", gid).await
     }
 
     /// 恢复下载
     pub async fn unpause(&self, gid: &str) -> Aria2Result<String> {
-        self.call_method("aria2.unpause", vec![gid]).await
+        self.call_method("aria2.unpause", gid).await
     }
 
     /// 移除下载
     pub async fn remove(&self, gid: &str) -> Aria2Result<String> {
-        self.call_method("aria2.remove", vec![gid]).await
+        self.call_method("aria2.remove", gid).await
     }
 
     /// 关闭 aria2

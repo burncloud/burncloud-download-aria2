@@ -28,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         // 添加一个测试下载
         println!("\n⬇️  添加测试下载任务...");
-        let test_url = "https://httpbin.org/bytes/1024"; // 1KB 测试文件
+        let test_url = "https://mirrors.tuna.tsinghua.edu.cn/ubuntu-releases/20.04.6/ubuntu-20.04.6-live-server-amd64.iso"; // 1KB 测试文件
 
         match client.add_uri(vec![test_url.to_string()], None).await {
             Ok(gid) => {
