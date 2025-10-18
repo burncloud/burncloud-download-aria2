@@ -261,8 +261,16 @@ pub fn find_available_port() -> Aria2Result<u16> {
     Err(Aria2Error::PortError("未找到可用端口".to_string()))
 }
 
+/// 终止所有aria2c.exe进程
+pub fn kill_existing_aria2() {
+    let _ = Command::new("taskkill").args(["/F", "/IM", "aria2c.exe"]).output();
+}
+
 /// 启动 aria2 RPC 服务
 pub async fn start_aria2_rpc(config: &Aria2Config) -> Aria2Result<Aria2Instance> {
+    // 先终止现有的aria2c.exe进程
+    kill_existing_aria2();
+
     let port = find_available_port()?;
 
     let mut cmd = Command::new(&config.aria2_path);
